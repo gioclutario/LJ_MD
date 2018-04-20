@@ -9,8 +9,7 @@ import sys
 class LJ_2D_Sim_Numpy():
     def __init__(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,natoms,adist,rfreq,efreq,rc):
         self.sigma = sigma
-        self.rc = 2.0 * self.sigma
-        self.adist = adist
+        self.adist = adist/self.sigma
         self.eps = eps
         self.temperature = temperature
         self.duration = duration
@@ -19,7 +18,7 @@ class LJ_2D_Sim_Numpy():
         self.iv = iv
         self.ncells = ncells
         #Box size = ncells * adist
-        self.boxsize = ncells * adist
+        self.boxsize = ncells * self.adist
         self.natoms = 2*(ncells**2)
         self.iterations = self.duration/self.dt
         self.rfreq = rfreq
@@ -123,33 +122,10 @@ class LJ_2D_Sim_Numpy():
     #     iforcesArray = np.array(iforcesList)
     #     return iforcesArray
 
-    def initial_forces(self,lattice):
-        ut = 0.0
-        iforcesList = []
-        for atom1 in range(len(lattice)):
-            for atom2 in range(atom1+1,len(lattice)):
-                drx = lattice[atom1][0] - lattice[atom2][0]
-                dry = lattice[atom1][1] - lattice[atom2][1]
-                drx -= self.boxsize*round(drx/self.boxsize)
-                dry -= self.boxsize*round(drx/self.boxsize)
-                r2 = (drx**2)+(dry**2)
-                if r2 >= self.rc**2:
-                    r6r = (1.0)/(r2**3)
-                    r12r = r6r ** 2
-                    r = math.sqrt(r2)
-                    u = (r12r - r6r)*4.0 - self.urc - (r - self.rc) * self.dudrc
-                    ut += u
-                    t = 48.0*(r12r - 0.5*r6r)/r2 + (self.dudrc)/r
-                    forcexy = [drx*t,dry*t]
-                    iforcesList.append(forcexy)
-                else:
-                    iforcesList.append([0,0])
-        iforcesArray = np.array(iforcesList)
-        return iforcesArray
-
     def initial_forcesV2(self,lattice):
         ut = 0.0
-        iforcesArray = np.empty((len(lattice),len(lattice)),dtype = object)
+        iforcesArrayX = np.zeros((len(lattice),len(lattice)))
+        iforcesArrayY = np.zeros((len(lattice),len(lattice)))
         for atom1 in range(len(lattice)):
             for atom2 in range(atom1+1,len(lattice)):
                 drx = lattice[atom1][0] - lattice[atom2][0]
@@ -157,33 +133,41 @@ class LJ_2D_Sim_Numpy():
                 drx -= self.boxsize*round(drx/self.boxsize)
                 dry -= self.boxsize*round(drx/self.boxsize)
                 r2 = (drx**2)+(dry**2)
-                if r2 >= self.rc**2:
+                if r2 <= self.rc**2:
                     r6r = (1.0)/(r2**3)
                     r12r = r6r ** 2
                     r = math.sqrt(r2)
                     u = (r12r - r6r)*4.0 - self.urc - (r - self.rc) * self.dudrc
                     ut += u
                     t = 48.0*(r12r - 0.5*r6r)/r2 + (self.dudrc)/r
-                    iforcesArray[atom1][atom2] = [drx*t,dry*t]
-                    iforcesArray[atom2][atom1] = -iforcesArray[atom1][atom2]
+                    iforcesArrayX[atom1][atom2] = drx*t
+                    iforcesArrayY[atom1][atom2] = dry*t
+                    iforcesArrayX[atom2][atom1] = drx*t
+                    iforcesArrayY[atom2][atom1] = dry*t
                 else:
-                    iforcesArray[atom1][atom2] = [0,0]
-        return iforcesArray
+                    iforcesArrayX[atom1][atom2] = 0
+                    iforcesArrayY[atom1][atom2] = 0
+        return iforcesArrayX,iforcesArrayY
 
     """ Sub function to calculate the total force for a given array of forces """
-    # def totalForce(self,forces):
-    #     tforceList = np.empty([self.natoms,2]
-    #     for atom1 in range(len(forces)):
-    #         tForce = 0.0
-    #         for atom2 in range(atom1+1,len(forces)):
-    #             tForce += forces[atom2]
-    #         tforceList.append(tForce)
-    #     return tforceList
+    def totalForce(self,forceX,forceY):
+        tforceArray = np.zeros([self.natoms,2])
+        atomCount = 0
+        for atom 1 in range(self.natoms):
+            tForceX = 0.0
+            tForceY = 0.0
+            for atom2 in range(self.atoms):
+                tForceX += forceX[atom1][atom2]
+                tForceY += forceY[atom1][atom2]
+            tforceArray[atomCount][0] = tForceX
+            tforceArray[atomCount][1] = tForceY
+            atomCount += 1
+        return tforceArray
 
-    """The main function of the program which utilizes the leap frog algorhithm
-    to produce a cycle of new position, acceleration, velocity """
+    """Leap frog Algorithm which takes in position(lattice), force, and momenta of a system and outputs
+    the resulting new force & momenta of the system after a given amount of time set by duration."""
 
-    def leapFrogAlgo(self,lattice,forces,momenta):
+    def leapFrogAlgo(self,lattice,forceX,forceY,momenta):
         #Kinetic energy counter
         ke = 0.0
 
@@ -194,14 +178,8 @@ class LJ_2D_Sim_Numpy():
         accelY = 0.0
 
         #For loop to obtain total acceleration of i'th atom
-        tforceList = []
-        for atom1 in range(len(forces)):
-            tForce = 0.0
-            for atom2 in range(atom1+1,len(forces)):
-                tForce += forces[atom2]
-            tforceList.append(tForce)
 
-        forceList = totalForce(forces)
+        forceList = totalForce(forceX,forceY)
 
         #Total non-shifted X-acceleration
         daccelX = accelX/float(len(lattice))
@@ -220,19 +198,21 @@ class LJ_2D_Sim_Numpy():
             newVelocity = []
 
             #Nested foor loop whcih will iterate through each atom within the initialized lattice
-            for i in range(len(ilattice)):
+            for i in range(self.natoms):
 
                 #Leap Frog Algorithm's method for calculating the next position
-                newPos = [lattice[i][0] + momenta[i][0]*t + 0.5*(tforceList[i])*(t**2),lattice[i][1] + momenta[i][1]*t + 0.5*(tforceList[i])*(t**2)]
+                newPos = [lattice[i][0] + momenta[i][0]*t + 0.5*(forceList[i][0])*(t**2),lattice[i][1] + momenta[i][1]*t + 0.5*(forceList[i][1])*(t**2)]
                 newPosition.append(newPos)
 
-            newForce = self.initial_forces(newPosition)
+            #Apply a sub function that will append the results of the completed newPos into a text file
+            newForce = self.initial_forcesV2(newPosition)
 
 
-            for i in range(len(illattice)):
+            for i in range(self.natoms):
                 newVel = [imomenta[i][0]+0.5(newForce[i][0])*t,imomenta[i][1]+0.5(newForce[i][1])*t]
                 newVelocity.append(newVel)
 
+            #Apply a sub funciton that will append the rsults of the completed newVel into a text file
         return lfArray
 
     # Probably don't need this as a function and can just write this on main()
@@ -247,8 +227,8 @@ class LJ_2D_Sim_Numpy():
         latplot = plt.show()
         return latplot
 def main():
-    #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,natoms,adist,rfreq,efreq,rc)
-    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,1.0,0.001,1,1,5,50,1.56,100,10,2.0)
+    #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc)
+    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,1.0,0.001,1,1,5,0.53,100,10,1.6/1.414)
     lattice = instance.initial_position()
     print(len(lattice))
     imomenta = instance.initial_momenta(len(lattice))
