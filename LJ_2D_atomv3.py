@@ -1,13 +1,13 @@
 import numpy as np
 import math
 import random
-import pybinding as pb
-import matplotlib.pyplot as plt
+# import pybinding as pb
+# import matplotlib.pyplot as plt
 import sys
 
 """ A Lennard Jones Simulation in 2D """
 class LJ_2D_Sim_Numpy():
-    def __init__(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,natoms,adist,rfreq,efreq,rc):
+    def __init__(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc):
         self.sigma = sigma
         self.adist = adist/self.sigma
         self.eps = eps
@@ -33,21 +33,19 @@ class LJ_2D_Sim_Numpy():
     def initial_position(self):
         #If condition to initialize lattice if ip is 1
         if self.ip == 1:
-            #The reduced lattice distance between atoms in Atomic Units
-            reducedLat = self.adist/self.sigma
             #First of 2 initial atoms to build lattice with
             atom_1 = [0.0,0.0]
             #Second initial atom
-            atom_2 = [reducedLat/2,reducedLat/2]
+            atom_2 = [self.adist/2,self.adist/2]
             #Empty list to contain lattice coordinates
             latticeList = []
             #Nested for loops to build lattice
             for atomx in range(self.ncells):
                 for atomy in range(self.ncells):
                     #Formula to create new atom coordinates with initial position @ atom_1
-                    newAtom_1 = [atom_1[0] + (reducedLat*(atomx)),atom_1[1] + (reducedLat*(atomy))]
+                    newAtom_1 = [atom_1[0] + (self.adist*(atomx)),atom_1[1] + (self.adist*(atomy))]
                     #Formula to create new atom coordinates with initial position @ atom_2
-                    newAtom_2 = [atom_2[0] + (reducedLat*(atomx)),atom_2[1] + (reducedLat*(atomy))]
+                    newAtom_2 = [atom_2[0] + (self.adist*(atomx)),atom_2[1] + (self.adist*(atomy))]
                     #Appends the new coordinates to the empty list
                     latticeList.append(newAtom_1)
                     latticeList.append(newAtom_2)
@@ -96,32 +94,6 @@ class LJ_2D_Sim_Numpy():
         #     return
 
     """ Force initialization function """
-    # def initial_forces(self,lattice):
-    #     size = (len(lattice)*(len(lattice)-1))//2
-    #     #becomes pe which then becomes ppe_old
-    #     ut = 0.0
-    #     iforcesArray = np.empty([size,2])
-    #     # iforcesArrayY = np.empty([(lattice*(lattice-1))/2,2])
-    #     for atom1 in range(len(lattice)):
-    #         for atom2 in range(atom1+1,len(lattice)):
-    #             drx = lattice[atom1][0] - lattice[atom2][0]
-    #             dry = lattice[atom1][1] - lattice[atom2][1]
-    #             r2 = (drx**2) + (dry**2)
-    #             if r2 >= (self.rc ** 2)
-    #                 r6r = (1.0)/(r2**3)
-    #                 r12r = r6r ** 2
-    #                 r = math.sqrt(r2)
-    #                 u = (r12r - r6r)*4.0 - self.urc - (r - self.rc) * self.dudrc
-    #                 ut += u
-    #                 t = 48.0 * (r12r - 0.5*r6r)/r2 + (self.dudrc)/r
-    #                 for force in range(size):
-    #                     iforcesArray[force] =
-    #
-    #             else:
-    #                 iforcesList.append([0.0,0.0])
-    #     iforcesArray = np.array(iforcesList)
-    #     return iforcesArray
-
     def initial_forcesV2(self,lattice):
         ut = 0.0
         iforcesArrayX = np.zeros((len(lattice),len(lattice)))
@@ -153,10 +125,10 @@ class LJ_2D_Sim_Numpy():
     def totalForce(self,forceX,forceY):
         tforceArray = np.zeros([self.natoms,2])
         atomCount = 0
-        for atom 1 in range(self.natoms):
+        for atom1 in range(self.natoms):
             tForceX = 0.0
             tForceY = 0.0
-            for atom2 in range(self.atoms):
+            for atom2 in range(self.natoms):
                 tForceX += forceX[atom1][atom2]
                 tForceY += forceY[atom1][atom2]
             tforceArray[atomCount][0] = tForceX
@@ -179,7 +151,7 @@ class LJ_2D_Sim_Numpy():
 
         #For loop to obtain total acceleration of i'th atom
 
-        forceList = totalForce(forceX,forceY)
+        forceList = self.totalForce(forceX,forceY)
 
         #Total non-shifted X-acceleration
         daccelX = accelX/float(len(lattice))
@@ -189,7 +161,7 @@ class LJ_2D_Sim_Numpy():
 
         #Application of Leap Frog Algorithm; General skeleton for now
         #Main for loop which loops through self.duration in intervals of self.dt
-        for t in range(self.dt,self.duration,self.dt):
+        for t in np.arange(self.dt,self.duration,self.dt):
 
             #Empty list which will store the x_(i+1) positions
             newPosition = []
@@ -205,16 +177,15 @@ class LJ_2D_Sim_Numpy():
                 newPosition.append(newPos)
 
             #Apply a sub function that will append the results of the completed newPos into a text file
-            newForce = self.initial_forcesV2(newPosition)
-
+            newForceX,newForceY = self.initial_forcesV2(newPosition)
+            ntForce = self.totalForce(newForceX,newForceY)
 
             for i in range(self.natoms):
-                newVel = [imomenta[i][0]+0.5(newForce[i][0])*t,imomenta[i][1]+0.5(newForce[i][1])*t]
+                newVel = [momenta[i][0] + (1/2)*(ntForce[i])*t, momenta[i][1] + (1/2)*(ntForce[i])*t]
                 newVelocity.append(newVel)
 
             #Apply a sub funciton that will append the rsults of the completed newVel into a text file
-        return lfArray
-
+            return ke,accelX,accelY
     # Probably don't need this as a function and can just write this on main()
     # def initialize_ofile(self,):
     #     with open(sys.argv[1],'w') as file1, open(sys.argv[2],'w') as file2, open(sys.argv[3],'w') as file3:
@@ -230,9 +201,9 @@ def main():
     #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc)
     instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,1.0,0.001,1,1,5,0.53,100,10,1.6/1.414)
     lattice = instance.initial_position()
-    print(len(lattice))
     imomenta = instance.initial_momenta(len(lattice))
-    iforce = instance.initial_forcesV2(lattice)
-    print(iforce)
+    iforceX,iforceY = instance.initial_forcesV2(lattice)
+    sim = instance.leapFrogAlgo(lattice,iforceX,iforceY,imomenta)
+    print(sim)
 if __name__ == '__main__':
     main()
