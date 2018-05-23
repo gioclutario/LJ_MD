@@ -67,72 +67,93 @@ class LJ_2D_Sim_Numpy():
             #Empty list that will contain list of momenta for each partcile
             momentaList = []
             #Counter for the total momenta in the x-direction
-            totalPX = 0.0
+            totalPX = 0.0 #Is this needed?
             #Counter for the total momenta in the y-direction
-            totalPY = 0.0
+            totalPY = 0.0 #Is this needed?
             for atom in range(ncells):
                 #Empty list that will contain the momenta of atom
                 atomMomenta =[]
-                #While loop that will generate a random momenta for atom
-                while True:
-                    #Generates random theta value
-                    theta = 2*math.pi*random.random()
-                    #Produces a random point within the unit circle
-                    rand_point = [math.cos(theta),math.sin(theta)]
-                    point_magnitude = (rand_point[0]**2) + (rand_point[1]**2)
-                    if point_magnitude < 1.0:
-                        break
-                sp = math.sqrt((1.0-point_magnitude))*2.0
-                totalPX += sp * rand_point[0] * u_0
-                totalPY += sp * rand_point[1] * u_0
-                atomMomenta.append(totalPX)
-                atomMomenta.append(totalPY)
+                #Generates random theta value
+                theta = 2*math.pi*random.random()
+                #Produces a random point within the unit circle
+                rand_point = [math.cos(theta),math.sin(theta)]
+                    # point_magnitude = (rand_point[0]**2) + (rand_point[1]**2)
+                # sp = math.sqrt((1.0-point_magnitude))*2.0
+                PX = rand_point[0] * u_0
+                PY = rand_point[1] * u_0
+                totalPX += PX
+                totalPY += PY
+                atomMomenta.append(PX)
+                atomMomenta.append(PY)
                 momentaList.append(atomMomenta)
             momentaArray = np.array(momentaList)
-            return momentaList
+            return momentaArray
         # if self.iv == 0:
         #     return
 
     """ Force initialization function """
     def initial_forcesV2(self,lattice):
+        #Intialization total potential energy
         ut = 0.0
+        #Initialization of Force Array in X & Y direction
         iforcesArrayX = np.zeros((len(lattice),len(lattice)))
         iforcesArrayY = np.zeros((len(lattice),len(lattice)))
+        #Main for loop to iterate over every atom
         for atom1 in range(len(lattice)):
+            #Nested for loop to iterate over every potential pairwise interaction with atom1
             for atom2 in range(atom1+1,len(lattice)):
+                #Calculates distance b/w atom1 and atom2 in x and y direction
                 drx = lattice[atom1][0] - lattice[atom2][0]
                 dry = lattice[atom1][1] - lattice[atom2][1]
+                #Implements periodic boundary condition
                 drx -= self.boxsize*round(drx/self.boxsize)
-                dry -= self.boxsize*round(drx/self.boxsize)
+                dry -= self.boxsize*round(dry/self.boxsize)
+                #Calculates the magnitude of the calculated distances
                 r2 = (drx**2)+(dry**2)
+                #If state to ensure that if r2 is within bounds of cutoff range, potential will be calculate based off of LJ potential equation otherwise value is 0.
                 if r2 <= self.rc**2:
+                    #Initializing components of LJ potential
                     r6r = (1.0)/(r2**3)
                     r12r = r6r ** 2
                     r = math.sqrt(r2)
+                    #Calculating LJ potential
                     u = (r12r - r6r)*4.0 - self.urc - (r - self.rc) * self.dudrc
+                    #Adding LJ potential to total PE
                     ut += u
+                    #Calculating derivative of LJ potential
                     t = 48.0*(r12r - 0.5*r6r)/r2 + (self.dudrc)/r
+                    #Initializing each array element with calculated force
                     iforcesArrayX[atom1][atom2] = drx*t
                     iforcesArrayY[atom1][atom2] = dry*t
-                    iforcesArrayX[atom2][atom1] = drx*t
-                    iforcesArrayY[atom2][atom1] = dry*t
+                #Else statement to initialze array element with force value of 0 if outside of cut off range
                 else:
                     iforcesArrayX[atom1][atom2] = 0
                     iforcesArrayY[atom1][atom2] = 0
+                #Implements Newton's 3rd law
+                iforcesArrayX[atom2][atom1] = -iforcesArrayX[atom1][atom2]
+                iforcesArrayY[atom2][atom1] = -iforcesArrayY[atom1][atom2]
         return iforcesArrayX,iforcesArrayY
 
     """ Sub function to calculate the total force for a given array of forces """
     def totalForce(self,forceX,forceY):
+        #Initializes total force Array containing the total forces of each atom in X & Y direction
         tforceArray = np.zeros([self.natoms,2])
+        #Atom counter to iterate over each atom
         atomCount = 0
+        #For loop to iterate over all atoms
         for atom1 in range(self.natoms):
+            #total Force counter for X & Y
             tForceX = 0.0
             tForceY = 0.0
+            #second for loop to iterate over all atoms for pair wise interactions
             for atom2 in range(self.natoms):
+                #Sums X & Y forces of each pair wise interaction to totalForce
                 tForceX += forceX[atom1][atom2]
                 tForceY += forceY[atom1][atom2]
+            #Equates each tForce to respective atom # in tforceArray
             tforceArray[atomCount][0] = tForceX
             tforceArray[atomCount][1] = tForceY
+            #Increases atomcount by one to continue totalforce calculations
             atomCount += 1
         return tforceArray
 
@@ -153,57 +174,89 @@ class LJ_2D_Sim_Numpy():
 
         forceList = self.totalForce(forceX,forceY)
 
-        #Total non-shifted X-acceleration
-        daccelX = accelX/float(len(lattice))
-
-        #Total non-shifed Y-acceleration
-        daccelY = accelY/float(len(lattice))
-
-        #Application of Leap Frog Algorithm; General skeleton for now
         #Main for loop which loops through self.duration in intervals of self.dt
-        for t in np.arange(self.dt,self.duration,self.dt):
-
+        for t in np.arange(0,self.duration,self.dt):
+            # print('')
             #Empty list which will store the x_(i+1) positions
             newPosition = []
-
             #Empty list which will store the v_(i+1) positions
             newVelocity = []
+
+            for i in range(len(forceList)):
+                accelX += forceList[i][0]
+                accelY += forceList[i][1]
+
+            #Total non-shifted X-acceleration
+            daccelX = accelX/float(len(lattice))
+
+            #Total non-shifted Y-acceleration
+            daccelY = accelY/float(len(lattice))
 
             #Nested foor loop whcih will iterate through each atom within the initialized lattice
             for i in range(self.natoms):
 
                 #Leap Frog Algorithm's method for calculating the next position
-                newPos = [lattice[i][0] + momenta[i][0]*t + 0.5*(forceList[i][0])*(t**2),lattice[i][1] + momenta[i][1]*t + 0.5*(forceList[i][1])*(t**2)]
+                newPos = [lattice[i][0] + momenta[i][0]*self.dt + (1/2)*(forceList[i][0]-daccelX)*(self.dt**2),
+                lattice[i][1] + momenta[i][1]*self.dt + (1/2)*(forceList[i][1]-daccelY)*(self.dt**2)]
+                # print("This is the value of newPos = {}".format(newPos))
                 newPosition.append(newPos)
+                # print("This is what newPosition looks like = {}".format(newPosition))
+            #Updates lattice with new Position coordinates
+            if newPosition[0][0] == lattice[0][0]:
+                print('New position has no changed')
+            lattice = newPosition
 
             #Apply a sub function that will append the results of the completed newPos into a text file
-            newForceX,newForceY = self.initial_forcesV2(newPosition)
+            newForceX,newForceY = self.initial_forcesV2(lattice)
             ntForce = self.totalForce(newForceX,newForceY)
 
             for i in range(self.natoms):
-                newVel = [momenta[i][0] + (1/2)*(ntForce[i])*t, momenta[i][1] + (1/2)*(ntForce[i])*t]
+                newVel = [momenta[i][0] + (1/2)*(ntForce[i][0]+forceList[i][0]-daccelX)*self.dt,
+                momenta[i][1] + (1/2)*(ntForce[i][1]+forceList[i][0]-daccelY)*self.dt]
+                # print("This is the value of newVel = {}".format(newVel))
                 newVelocity.append(newVel)
+                # print('This is what newVelocity looks like = {}'.format(newVelocity))
+            with open(sys.argv[2],"a") as positionTrajectory:
+                positionTrajectory.write('MD sim of {} Argon atoms, t = {}\n'.format(self.natoms,t))
+                positionTrajectory.write('{}\n'.format(self.natoms))
+                for i in range(len(newPosition)):
+                    trajOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{posZ:8.3f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1)
+                    positionTrajectory.write(trajOutput)
+                positionTrajectory.write('{0} {0} {0}\n'.format(self.boxsize))
+            #Updates momenta with new velocities
 
-            #Apply a sub funciton that will append the rsults of the completed newVel into a text file
-            return ke,accelX,accelY
-    # Probably don't need this as a function and can just write this on main()
-    # def initialize_ofile(self,):
-    #     with open(sys.argv[1],'w') as file1, open(sys.argv[2],'w') as file2, open(sys.argv[3],'w') as file3:
-    #
-    #     pass
+            momenta = newVelocity
+
+            #Updates forceList(a_i) with ntForce(a_i+1) for next iteration
+            forceList = ntForce
+        #Apply a sub funciton that will append the rsults of the completed newVel into a text file
+        with open(sys.argv[1],"a") as positionOutput:
+            positionOutput.write('MD Sim {} Argons\n'.format(self.natoms))
+            for i in range(len(newPosition)):
+                posOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{velX:8.4f}{velY:8.4f}{velZ:8.4f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1,velX =momenta[i][0],velY = momenta[i][1],velZ = 0)
+                positionOutput.write(posOutput)
+            positionOutput.write('{0} {0} {0}\n'.format(self.boxsize))
+        return ke,accelX,accelY
+
+    """Plotter function to visualize any given 2D lattice"""
     def Plotter(self,lattice):
         x = lattice[:,0]
         y = lattice[:,1]
         plt.scatter(x,y)
         latplot = plt.show()
         return latplot
+
 def main():
     #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc)
     instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,1.0,0.001,1,1,5,0.53,100,10,1.6/1.414)
     lattice = instance.initial_position()
+    # with open('lattice.txt','a') as latticeFile:
+    #     latticeFile.write('{}'.format(lattice))
     imomenta = instance.initial_momenta(len(lattice))
+    # with open('velocity.txt','a') as velocityFile:
+    #     velocityFile.write('{}'.format(imomenta))
     iforceX,iforceY = instance.initial_forcesV2(lattice)
     sim = instance.leapFrogAlgo(lattice,iforceX,iforceY,imomenta)
-    print(sim)
+
 if __name__ == '__main__':
     main()
