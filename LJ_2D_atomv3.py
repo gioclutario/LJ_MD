@@ -3,6 +3,7 @@ import math
 import random
 # import pybinding as pb
 # import matplotlib.pyplot as plt
+import os
 import sys
 
 """ A Lennard Jones Simulation in 2D """
@@ -61,7 +62,7 @@ class LJ_2D_Sim_Numpy():
 
     """ Momentum initialization function """
     def initial_momenta(self,ncells):
-        # If fucntion to psuedo-randomly initialze momenta if iv = 1
+        # If fucntion to randomly initialze momenta if iv = 1
         if self.iv == 1:
             u_0 = math.sqrt(2*self.temperature)
             #Empty list that will contain list of momenta for each partcile
@@ -132,7 +133,7 @@ class LJ_2D_Sim_Numpy():
                 #Implements Newton's 3rd law
                 iforcesArrayX[atom2][atom1] = -iforcesArrayX[atom1][atom2]
                 iforcesArrayY[atom2][atom1] = -iforcesArrayY[atom1][atom2]
-        return iforcesArrayX,iforcesArrayY
+        return iforcesArrayX,iforcesArrayY,ut
 
     """ Sub function to calculate the total force for a given array of forces """
     def totalForce(self,forceX,forceY):
@@ -161,19 +162,16 @@ class LJ_2D_Sim_Numpy():
     the resulting new force & momenta of the system after a given amount of time set by duration."""
 
     def leapFrogAlgo(self,lattice,forceX,forceY,momenta):
-        #Kinetic energy counter
-        ke = 0.0
-
         #Total acceleration in X-direction counter
         accelX = 0.0
 
         #Total acceleration in Y-direction counter
         accelY = 0.0
 
-        #For loop to obtain total acceleration of i'th atom
-
         forceList = self.totalForce(forceX,forceY)
 
+        rfreqCounter = 0
+        efreqCounter = 0
         #Main for loop which loops through self.duration in intervals of self.dt
         for t in np.arange(0,self.duration,self.dt):
             # print('')
@@ -181,7 +179,12 @@ class LJ_2D_Sim_Numpy():
             newPosition = []
             #Empty list which will store the v_(i+1) positions
             newVelocity = []
+            #Counter for kinetic energy that will reset with each time step
+            kineticEnergy = 0.0
+            #Counter for potential energy that will reset with each time step
+            potentialEnergy = 0.0
 
+            #For loop to sum up the total acceleration of the system
             for i in range(len(forceList)):
                 accelX += forceList[i][0]
                 accelY += forceList[i][1]
@@ -196,47 +199,58 @@ class LJ_2D_Sim_Numpy():
             for i in range(self.natoms):
 
                 #Leap Frog Algorithm's method for calculating the next position
-                newPos = [lattice[i][0] + momenta[i][0]*self.dt + (1/2)*(forceList[i][0]-daccelX)*(self.dt**2),
-                lattice[i][1] + momenta[i][1]*self.dt + (1/2)*(forceList[i][1]-daccelY)*(self.dt**2)]
-                # print("This is the value of newPos = {}".format(newPos))
+                newPos = [lattice[i][0] + momenta[i][0]*self.dt + (1/2)*(forceList[i][0]-daccelX)*(self.dt**2),lattice[i][1] + momenta[i][1]*self.dt + (1/2)*(forceList[i][1]-daccelY)*(self.dt**2)]
+                #Appends newPos to newPosition list
                 newPosition.append(newPos)
-                # print("This is what newPosition looks like = {}".format(newPosition))
+                #Calculates the kinetic energy of i'th atom and adds to KE counter
+                kineticEnergy += 0.5*((momenta[i][0]**2)+(momenta[i][1]**2))
+
             #Updates lattice with new Position coordinates
-            if newPosition[0][0] == lattice[0][0]:
-                print('New position has no changed')
             lattice = newPosition
 
             #Apply a sub function that will append the results of the completed newPos into a text file
-            newForceX,newForceY = self.initial_forcesV2(lattice)
+            newForceX,newForceY,ut = self.initial_forcesV2(lattice)
+            potentialEnergy += ut
             ntForce = self.totalForce(newForceX,newForceY)
 
             for i in range(self.natoms):
-                newVel = [momenta[i][0] + (1/2)*(ntForce[i][0]+forceList[i][0]-daccelX)*self.dt,
-                momenta[i][1] + (1/2)*(ntForce[i][1]+forceList[i][0]-daccelY)*self.dt]
-                # print("This is the value of newVel = {}".format(newVel))
+                #Leap Frog Algorithm's method for calculating the next velocity
+                newVel = [momenta[i][0] + (1/2)*(ntForce[i][0]+forceList[i][0]-daccelX)*self.dt, momenta[i][1] + (1/2)*(ntForce[i][1]+forceList[i][1]-daccelY)*self.dt]
+                #Appends newVel to the append to the newVelocity list
                 newVelocity.append(newVel)
-                # print('This is what newVelocity looks like = {}'.format(newVelocity))
-            with open(sys.argv[2],"a") as positionTrajectory:
-                positionTrajectory.write('MD sim of {} Argon atoms, t = {}\n'.format(self.natoms,t))
-                positionTrajectory.write('{}\n'.format(self.natoms))
-                for i in range(len(newPosition)):
-                    trajOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{posZ:8.3f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1)
-                    positionTrajectory.write(trajOutput)
-                positionTrajectory.write('{0} {0} {0}\n'.format(self.boxsize))
+            #If statemetn to determine whether or not to write the file based off of rfreq
+            if rfreqCounter%self.rfreq == 0:
+                with open(sys.argv[2],"a") as positionTrajectory:
+                    positionTrajectory.write('MD sim of {} Argon atoms, t = {}\n'.format(self.natoms,t))
+                    positionTrajectory.write('{}\n'.format(self.natoms))
+                    for i in range(len(newPosition)):
+                        trajOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{posZ:8.3f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0]*self.sigma ,posY =newPosition[i][1]*self.sigma, posZ = 1)
+                        positionTrajectory.write(trajOutput)
+                    positionTrajectory.write('{0} {0} {0}\n'.format(self.boxsize*self.sigma))
+            if efreqCounter%self.efreq == 0:
+                with open('te.txt',"a") as teFile,open('pe.txt',"a") as peFile,open('ke.txt',"a") as keFile,open('tFile.txt','a') as tempFile:
+                    peFile.write('{time:>3f} {pe:>8.3f}\n'.format(time = t,pe = potentialEnergy))
+                    keFile.write('{time:>3f} {ke:>8.3f}\n'.format(time = t,ke = kineticEnergy))
+                    teFile.write('{time:>3f} {te:8.3f}\n'.format(time = t,te = kineticEnergy + potentialEnergy))
+                    tempFile.write('{time:>3f} {temp:8.3f}\n'.format(time = t, temp = (kineticEnergy*self.eps)/self.natoms))
             #Updates momenta with new velocities
-
             momenta = newVelocity
-
             #Updates forceList(a_i) with ntForce(a_i+1) for next iteration
             forceList = ntForce
+            rfreqCounter += 1
+            efreqCounter += 1
         #Apply a sub funciton that will append the rsults of the completed newVel into a text file
         with open(sys.argv[1],"a") as positionOutput:
+            #Writes the header of the final output file
             positionOutput.write('MD Sim {} Argons\n'.format(self.natoms))
+            #for loop to iterate through every single newPosition
             for i in range(len(newPosition)):
+                #Writes the properly formatted info of the atom and its position&velocity
                 posOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{velX:8.4f}{velY:8.4f}{velZ:8.4f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1,velX =momenta[i][0],velY = momenta[i][1],velZ = 0)
                 positionOutput.write(posOutput)
+            #Writes the boxsize ender for the final output file
             positionOutput.write('{0} {0} {0}\n'.format(self.boxsize))
-        return ke,accelX,accelY
+        return
 
     """Plotter function to visualize any given 2D lattice"""
     def Plotter(self,lattice):
@@ -248,14 +262,20 @@ class LJ_2D_Sim_Numpy():
 
 def main():
     #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc)
-    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,1.0,0.001,1,1,5,0.53,100,10,1.6/1.414)
+    # os.remove('final.gro')
+    # os.remove('ke.txt')
+    # os.remove('pe.txt')
+    # os.remove('te.txt')
+    # os.remove('traj.gro')
+    # os.remove('tFile.txt')
+    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,10,0.001,1,1,5,0.53,1000,10,1.6/1.414)
     lattice = instance.initial_position()
     # with open('lattice.txt','a') as latticeFile:
     #     latticeFile.write('{}'.format(lattice))
     imomenta = instance.initial_momenta(len(lattice))
     # with open('velocity.txt','a') as velocityFile:
     #     velocityFile.write('{}'.format(imomenta))
-    iforceX,iforceY = instance.initial_forcesV2(lattice)
+    iforceX,iforceY,ut = instance.initial_forcesV2(lattice)
     sim = instance.leapFrogAlgo(lattice,iforceX,iforceY,imomenta)
 
 if __name__ == '__main__':
