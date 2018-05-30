@@ -8,7 +8,7 @@ import sys
 
 """ A Lennard Jones Simulation in 2D """
 class LJ_2D_Sim_Numpy():
-    def __init__(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc):
+    def __init__(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc,vscale):
         self.sigma = sigma
         self.adist = adist/self.sigma
         self.eps = eps
@@ -29,7 +29,7 @@ class LJ_2D_Sim_Numpy():
         self.urc = 4.0 * (1.0/(self.rc**12) - 1.0/(self.rc**6))
         #derivative of LJ potential
         self.dudrc = (-48/self.rc) * (1.0/(self.rc**12) - 0.5/(self.rc**6))
-
+        self.vscale = vscale
     """ Position initialization function """
     def initial_position(self):
         #If condition to initialize lattice if ip is 1
@@ -55,11 +55,24 @@ class LJ_2D_Sim_Numpy():
 
             return latticeArray
         #If condition to read gro file of lattice coords if ip is 0
-        # elif self.ip == 0:
-        #     with open(sys.argv[1],"r") as gro_file1:
-        #
-        #     pass
-
+        elif self.ip == 0:
+            #Empty list that will eventually contain all of the parsed coordinates
+            latticeList = []
+            #Context manager for input file
+            with open('final.gro',"r") as latInput:
+                #Parses through each individual line of the file
+                lines = latInput.readlines()
+                #A for loop to iterate through each line in lines with a counter via the enumerate function
+                for count,item in enumerate(lines):
+                    #If statement to ensure tha header & box size lines are not considered
+                    if count !=0 and count != len(lines)-1:
+                        #coords variable to store all of the posX & posY columns
+                        coords = [float(item[21:28].strip()),float(item[29:36].strip())]
+                        #Appends coords to latticeList
+                        latticeList.append(coords)
+            #Converts lattice list into an array
+            latticeArray = np.array(latticeList)
+            return latticeArray
     """ Momentum initialization function """
     def initial_momenta(self,ncells):
         # If fucntion to randomly initialze momenta if iv = 1
@@ -78,7 +91,7 @@ class LJ_2D_Sim_Numpy():
                 theta = 2*math.pi*random.random()
                 #Produces a random point within the unit circle
                 rand_point = [math.cos(theta),math.sin(theta)]
-                    # point_magnitude = (rand_point[0]**2) + (rand_point[1]**2)
+                # point_magnitude = (rand_point[0]**2) + (rand_point[1]**2)
                 # sp = math.sqrt((1.0-point_magnitude))*2.0
                 PX = rand_point[0] * u_0
                 PY = rand_point[1] * u_0
@@ -89,8 +102,23 @@ class LJ_2D_Sim_Numpy():
                 momentaList.append(atomMomenta)
             momentaArray = np.array(momentaList)
             return momentaArray
-        # if self.iv == 0:
-        #     return
+        #if condition to read in initial momenta file
+        if self.iv == 0:
+            #Empty momentaList which will contain the initial momenta of each atom
+            momentaList = []
+            #Context manager for input file
+            with open('final.gro',"r") as velInput:
+                #Reads through each line of the file
+                lines = velInput.readlines()
+                #For loop to iterate through each line in lines with a counter
+                for count,item in enumerate(lines):
+                    #If statement to ensure that header and box are not considered
+                    if count !=0 and count != len(lines)-1:
+                        print(item)
+                        print('This is value 1:{} This is value 2:{}'.format(item[37:44].strip(),item[45:52].strip()))
+                        coords = [float(item[45:52].strip()),float(item[53:60].strip())]
+                        momentaList.append(coords)
+            return np.array(momentaList)
 
     """ Force initialization function """
     def initial_forcesV2(self,lattice):
@@ -246,7 +274,7 @@ class LJ_2D_Sim_Numpy():
             #for loop to iterate through every single newPosition
             for i in range(len(newPosition)):
                 #Writes the properly formatted info of the atom and its position&velocity
-                posOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{velX:8.4f}{velY:8.4f}{velZ:8.4f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1,velX =momenta[i][0],velY = momenta[i][1],velZ = 0)
+                posOutput ='{resNum:>5d}{resName:>5s}{atomName:>5s}{atomNum:>5d}{posX:8.3f}{posY:8.3f}{posZ:8.3f}{velX:8.4f}{velY:8.4f}{velZ:8.4f}\n'.format(resNum = i+1,resName = 'ARGON',atomName ='Ar', atomNum = i+1 ,posX = newPosition[i][0] ,posY =newPosition[i][1], posZ = 1,velX =momenta[i][0],velY = momenta[i][1],velZ = 0)
                 positionOutput.write(posOutput)
             #Writes the boxsize ender for the final output file
             positionOutput.write('{0} {0} {0}\n'.format(self.boxsize))
@@ -262,19 +290,23 @@ class LJ_2D_Sim_Numpy():
 
 def main():
     #(self,sigma,eps,temperature,duration,dt,ip,iv,ncells,adist,rfreq,efreq,rc)
-    # os.remove('final.gro')
-    # os.remove('ke.txt')
-    # os.remove('pe.txt')
-    # os.remove('te.txt')
-    # os.remove('traj.gro')
-    # os.remove('tFile.txt')
-    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,10,0.001,1,1,5,0.53,1000,10,1.6/1.414)
+    try:
+        os.remove('final.gro')
+        os.remove('ke.txt')
+        os.remove('pe.txt')
+        os.remove('te.txt')
+        os.remove('traj.gro')
+        os.remove('tFile.txt')
+    except IOError:
+        pass
+    instance = LJ_2D_Sim_Numpy(0.34,120.0,0.5,10,0.001,1,1,16,0.53,1000,10,1.6/1.414,1)
     lattice = instance.initial_position()
-    # with open('lattice.txt','a') as latticeFile:
-    #     latticeFile.write('{}'.format(lattice))
     imomenta = instance.initial_momenta(len(lattice))
-    # with open('velocity.txt','a') as velocityFile:
-    #     velocityFile.write('{}'.format(imomenta))
+    if instance.iv == 0 or instance.ip == 0:
+        try:
+            os.remove('final.gro')
+        except FileNotFoundError:
+            pass
     iforceX,iforceY,ut = instance.initial_forcesV2(lattice)
     sim = instance.leapFrogAlgo(lattice,iforceX,iforceY,imomenta)
 
